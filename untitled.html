@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>인플루엔자 시군구별 예방접종 현황 버블맵</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    body{margin:0;font-family:"맑은 고딕",sans-serif;}
+    #map{position:fixed;inset:0;}
+    .legend{background:white;padding:8px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);font-size:13px;}
+    .topbar{position:fixed;left:10px;top:10px;z-index:1200;}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="legend">
+      <b>인플루엔자 시군구별 국가예방접종 현황</b><br>
+      <small>버블 크기 = 접종 현황 값</small>
+    </div>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // 🔹 CSV 데이터를 여기에 붙여넣으세요
+    const csvData = `
+시군구명,값
+서울특별시 강남구,12345
+서울특별시 서초구,8520
+부산광역시 해운대구,6700
+대구광역시 수성구,4900
+광주광역시 북구,3100
+전라북도 전주시,7200
+제주특별자치도 제주시,5800
+`; // ← 여기에 전체 CSV 내용을 붙여넣으세요
+
+    // 🔹 전국 시군구 중심좌표 DB (샘플 일부, 실제는 250여개 전체 제공 필요)
+    const regionCenters = {
+      "서울특별시 강남구": [37.5172,127.0473],
+      "서울특별시 서초구": [37.4836,127.0327],
+      "서울특별시 종로구": [37.5730,126.9794],
+      "서울특별시 중구": [37.5636,126.9976],
+      "부산광역시 해운대구": [35.1631,129.1635],
+      "부산광역시 수영구": [35.1457,129.1130],
+      "대구광역시 수성구": [35.8580,128.6304],
+      "광주광역시 북구": [35.1740,126.9116],
+      "전라북도 전주시": [35.8242,127.1479],
+      "제주특별자치도 제주시": [33.4996,126.5312]
+      // ⚠️ 여기에 전국 모든 시군구 좌표를 추가해야 완전 버전 완성
+    };
+
+    // CSV 파싱
+    function parseCSV(text){
+      const lines = text.trim().split(/\r?\n/);
+      const rows = lines.slice(1).map(line=>{
+        const [region, value] = line.split(",");
+        return { region: region.trim(), value: Number(value) };
+      });
+      return rows;
+    }
+
+    const data = parseCSV(csvData);
+
+    // 지도 초기화
+    const map = L.map('map').setView([36.5,127.8],7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'&copy; OpenStreetMap'
+    }).addTo(map);
+
+    const values = data.map(d=>d.value).filter(v=>!isNaN(v));
+    const vmin = Math.min(...values);
+    const vmax = Math.max(...values);
+
+    function scaleRadius(v){
+      if (vmin===vmax) return 12;
+      return 5 + ((v-vmin)/(vmax-vmin))*30;
+    }
+
+    const layer = L.layerGroup().addTo(map);
+    data.forEach(d=>{
+      const coords = regionCenters[d.region];
+      if (!coords){
+        console.warn("좌표 없음:", d.region);
+        return;
+      }
+      const r = scaleRadius(d.value);
+      L.circleMarker(coords,{
+        radius:r,
+        color:'#1976d2',
+        fillColor:'#42a5f5',
+        fillOpacity:0.6,
+        weight:1
+      })
+      .addTo(layer)
+      .bindPopup(`<b>${d.region}</b><br>값: ${d.value}`);
+    });
+
+    const bounds = layer.getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+
+    // 범례
+    const legend = L.control({position:'bottomright'});
+    legend.onAdd = function(){
+      const div = L.DomUtil.create('div','legend');
+      div.innerHTML = `<b>버블 크기</b><br>작음: ${vmin} ~ 큼: ${vmax}`;
+      return div;
+    };
+    legend.addTo(map);
+  </script>
+
+  <div style="position:fixed; left:10px; bottom:10px; z-index:1200; font-size:12px; background:#fff;padding:6px;border-radius:6px;box-shadow:0 1px 6px rgba(0,0,0,0.1);">
+    제공: <a href="https://gptonline.ai/ko/" target="_blank">gptonline.ai/ko</a>
+  </div>
+</body>
+</html>
