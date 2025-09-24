@@ -1,116 +1,200 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <title>인플루엔자 시군구별 예방접종 현황 버블맵</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <meta charset="utf-8" />
+  <title>시도별 인플루엔자 예방접종 총합 — 버블맵 (데모)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body{margin:0;font-family:"맑은 고딕",sans-serif;}
-    #map{position:fixed;inset:0;}
-    .legend{background:white;padding:8px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);font-size:13px;}
-    .topbar{position:fixed;left:10px;top:10px;z-index:1200;}
+    body { margin:0; font-family: "Apple SD Gothic Neo","맑은 고딕",system-ui,Segoe UI,Arial; }
+    #map { position: absolute; inset:0; }
+    .info {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      z-index:1200;
+      background: rgba(255,255,255,0.95);
+      padding:12px;
+      border-radius:10px;
+      box-shadow:0 6px 18px rgba(0,0,0,0.12);
+      max-width:360px;
+    }
+    .info h3 { margin:0 0 6px 0; font-size:16px; }
+    .info small { color:#666; }
+    .legend {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      z-index:1200;
+      background:rgba(255,255,255,0.95);
+      padding:10px;
+      border-radius:8px;
+      box-shadow:0 6px 18px rgba(0,0,0,0.12);
+      font-size:13px;
+    }
+    table.simple { border-collapse:collapse; width:100%; margin-top:8px; font-size:13px; }
+    table.simple td, table.simple th { padding:6px 8px; border-bottom:1px solid #eee; text-align:left;}
+    .badge { display:inline-block; padding:4px 8px; border-radius:12px; background:#1976d2; color:white; font-size:12px; }
+    footer { position: fixed; left:12px; bottom:12px; z-index:1200; font-size:12px; background:#fff; padding:6px; border-radius:6px; box-shadow:0 1px 6px rgba(0,0,0,0.08);}
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="legend">
-      <b>인플루엔자 시군구별 국가예방접종 현황</b><br>
-      <small>버블 크기 = 접종 현황 값</small>
+  <div id="map"></div>
+
+  <div class="info" id="panel">
+    <h3>시도별 인플루엔자 접종 총합 <span class="badge">데모</span></h3>
+    <div><small>파일 없이도 바로 보입니다. 실제값으로 바꾸려면 코드 내부의 <code>provinceData</code> 배열을 대체하세요.</small></div>
+
+    <div id="toplist" style="margin-top:10px">
+      <strong>상위 5개 (데모 기준)</strong>
+      <table class="simple" id="ranktable">
+        <thead><tr><th>시도</th><th style="text-align:right">값</th></tr></thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
-  <div id="map"></div>
+
+  <div class="legend" id="legend">
+    <div style="font-weight:600">범례</div>
+    <div id="legend-scale" style="margin-top:8px;"></div>
+    <div style="margin-top:8px; font-size:12px; color:#555;">반경은 값(총합)에 비례합니다.</div>
+  </div>
+
+  <footer>제공: <a href="https://gptonline.ai/ko/" target="_blank">gptonline.ai/ko</a></footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // 🔹 CSV 데이터를 여기에 붙여넣으세요
-    const csvData = `
-시군구명,값
-서울특별시 강남구,12345
-서울특별시 서초구,8520
-부산광역시 해운대구,6700
-대구광역시 수성구,4900
-광주광역시 북구,3100
-전라북도 전주시,7200
-제주특별자치도 제주시,5800
-`; // ← 여기에 전체 CSV 내용을 붙여넣으세요
-
-    // 🔹 전국 시군구 중심좌표 DB (샘플 일부, 실제는 250여개 전체 제공 필요)
-    const regionCenters = {
-      "서울특별시 강남구": [37.5172,127.0473],
-      "서울특별시 서초구": [37.4836,127.0327],
-      "서울특별시 종로구": [37.5730,126.9794],
-      "서울특별시 중구": [37.5636,126.9976],
-      "부산광역시 해운대구": [35.1631,129.1635],
-      "부산광역시 수영구": [35.1457,129.1130],
-      "대구광역시 수성구": [35.8580,128.6304],
-      "광주광역시 북구": [35.1740,126.9116],
-      "전라북도 전주시": [35.8242,127.1479],
-      "제주특별자치도 제주시": [33.4996,126.5312]
-      // ⚠️ 여기에 전국 모든 시군구 좌표를 추가해야 완전 버전 완성
-    };
-
-    // CSV 파싱
-    function parseCSV(text){
-      const lines = text.trim().split(/\r?\n/);
-      const rows = lines.slice(1).map(line=>{
-        const [region, value] = line.split(",");
-        return { region: region.trim(), value: Number(value) };
-      });
-      return rows;
-    }
-
-    const data = parseCSV(csvData);
+    // ============================================================
+    // 즉시 표시되는 시도별 데이터 (데모)
+    // 실제 시도별 합계를 이미 알고 있다면 이 배열을 그대로 교체하세요.
+    // 형식: { province: "서울특별시", value: 숫자, lat: 위도, lon: 경도 }
+    // ============================================================
+    const provinceData = [
+      // --- 데모 수치(임의) ---
+      { province: "서울특별시", value: 1200000, lat: 37.5665, lon: 126.9780 },
+      { province: "부산광역시", value: 450000,  lat: 35.1796, lon: 129.0756 },
+      { province: "대구광역시", value: 320000,  lat: 35.8722, lon: 128.6025 },
+      { province: "인천광역시", value: 380000, lat: 37.4563, lon: 126.7052 },
+      { province: "광주광역시", value: 180000, lat: 35.1595, lon: 126.8526 },
+      { province: "대전광역시", value: 150000, lat: 36.3504, lon: 127.3845 },
+      { province: "울산광역시", value: 120000, lat: 35.5384, lon: 129.3114 },
+      { province: "세종특별자치시", value: 45000, lat: 36.4800, lon: 127.2890 },
+      { province: "경기도", value: 1800000, lat: 37.4138, lon: 127.5183 },
+      { province: "강원도", value: 220000, lat: 37.8228, lon: 128.1555 },
+      { province: "충청북도", value: 210000, lat: 36.6358, lon: 127.4910 },
+      { province: "충청남도", value: 300000, lat: 36.5184, lon: 126.8000 },
+      { province: "전라북도", value: 240000, lat: 35.7175, lon: 127.1530 },
+      { province: "전라남도", value: 200000, lat: 34.8161, lon: 126.4620 },
+      { province: "경상북도", value: 350000, lat: 36.4919, lon: 128.8889 },
+      { province: "경상남도", value: 420000, lat: 35.2540, lon: 128.6648 },
+      { province: "제주특별자치도", value: 90000, lat: 33.4996, lon: 126.5312 }
+    ];
+    // ============================================================
+    // 여기까지 대체하면 실제 데이터로 즉시 보입니다.
+    // ============================================================
 
     // 지도 초기화
-    const map = L.map('map').setView([36.5,127.8],7);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      attribution:'&copy; OpenStreetMap'
+    const map = L.map('map', { zoomControl: true }).setView([36.5, 127.8], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    const values = data.map(d=>d.value).filter(v=>!isNaN(v));
-    const vmin = Math.min(...values);
-    const vmax = Math.max(...values);
+    // 값 범위 계산
+    const vals = provinceData.map(d=>d.value).filter(v=>typeof v === 'number' && !isNaN(v));
+    const vMin = Math.min(...vals);
+    const vMax = Math.max(...vals);
 
-    function scaleRadius(v){
-      if (vmin===vmax) return 12;
-      return 5 + ((v-vmin)/(vmax-vmin))*30;
+    // 반경 스케일링: 값 -> 픽셀 반경 (선형)
+    function radiusForValue(v){
+      if (!v && v !== 0) return 6;
+      if (vMin === vMax) return 12;
+      const minR = 6, maxR = 70; // 시각적 크기 범위
+      return minR + ( (v - vMin) / (vMax - vMin) ) * (maxR - minR);
     }
 
+    // 컬러 스케일 (값이 클수록 진한 색)
+    function colorForValue(v){
+      // blue -> red gradient
+      const t = (v - vMin) / (vMax - vMin + 1e-9);
+      const r = Math.round(220*t + 40*(1-t));
+      const g = Math.round(80*(1-t) + 120*t*0.3);
+      const b = Math.round(80*(1-t) + 200*(1-t)*0.2);
+      return `rgb(${r},${g},${b})`;
+    }
+
+    // 레이어에 마커 추가
     const layer = L.layerGroup().addTo(map);
-    data.forEach(d=>{
-      const coords = regionCenters[d.region];
-      if (!coords){
-        console.warn("좌표 없음:", d.region);
-        return;
-      }
-      const r = scaleRadius(d.value);
-      L.circleMarker(coords,{
-        radius:r,
-        color:'#1976d2',
-        fillColor:'#42a5f5',
-        fillOpacity:0.6,
-        weight:1
-      })
-      .addTo(layer)
-      .bindPopup(`<b>${d.region}</b><br>값: ${d.value}`);
+    provinceData.forEach(d=>{
+      const r = radiusForValue(d.value);
+      const col = colorForValue(d.value);
+      const circle = L.circleMarker([d.lat, d.lon], {
+        radius: r,
+        color: col,
+        fillColor: col,
+        fillOpacity: 0.7,
+        weight: 1
+      }).addTo(layer);
+
+      const popupHtml = `<div style="font-weight:700">${escapeHtml(d.province)}</div>
+        <div style="margin-top:6px;">총 접종 인원(또는 값): <strong>${numberWithCommas(d.value)}</strong></div>`;
+      circle.bindPopup(popupHtml);
     });
 
+    // 지도 범위 자동 조정
     const bounds = layer.getBounds();
-    if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+    if (bounds.isValid && bounds.isValid()) map.fitBounds(bounds.pad(0.2));
 
-    // 범례
-    const legend = L.control({position:'bottomright'});
-    legend.onAdd = function(){
-      const div = L.DomUtil.create('div','legend');
-      div.innerHTML = `<b>버블 크기</b><br>작음: ${vmin} ~ 큼: ${vmax}`;
-      return div;
-    };
-    legend.addTo(map);
+    // 상위 5개 테이블 채우기
+    const tbody = document.querySelector('#ranktable tbody');
+    const sorted = [...provinceData].sort((a,b)=>b.value - a.value);
+    sorted.slice(0,5).forEach(row=>{
+      const tr = document.createElement('tr');
+      const td1 = document.createElement('td'); td1.textContent = row.province;
+      const td2 = document.createElement('td'); td2.style.textAlign='right'; td2.textContent = numberWithCommas(row.value);
+      tr.appendChild(td1); tr.appendChild(td2); tbody.appendChild(tr);
+    });
+
+    // 범례(사이즈 예시)
+    (function buildLegend(){
+      const legendDiv = document.getElementById('legend-scale');
+      const steps = 4;
+      const container = document.createElement('div');
+      for (let i=0;i<=steps;i++){
+        const frac = i/steps;
+        const v = Math.round(vMin + frac*(vMax - vMin));
+        const r = radiusForValue(v);
+        const item = document.createElement('div');
+        item.style.display='flex';
+        item.style.alignItems='center';
+        item.style.gap='8px';
+        item.style.marginBottom='6px';
+        const dot = document.createElement('div');
+        dot.style.width = (r*2)+'px';
+        dot.style.height = (r*2)+'px';
+        dot.style.borderRadius = '50%';
+        dot.style.background = colorForValue(v);
+        dot.style.opacity = '0.8';
+        dot.style.border = '1px solid rgba(0,0,0,0.08)';
+        const label = document.createElement('div');
+        label.style.fontSize='13px';
+        label.textContent = numberWithCommas(v);
+        item.appendChild(dot);
+        item.appendChild(label);
+        container.appendChild(item);
+      }
+      legendDiv.appendChild(container);
+    })();
+
+    // 유틸: 숫자에 콤마
+    function numberWithCommas(x){
+      if (x === null || x === undefined) return '';
+      return String(x).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+    // 유틸: HTML escape
+    function escapeHtml(s){
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[m]; });
+    }
   </script>
-
-  <div style="position:fixed; left:10px; bottom:10px; z-index:1200; font-size:12px; background:#fff;padding:6px;border-radius:6px;box-shadow:0 1px 6px rgba(0,0,0,0.1);">
-    제공: <a href="https://gptonline.ai/ko/" target="_blank">gptonline.ai/ko</a>
-  </div>
 </body>
 </html>
